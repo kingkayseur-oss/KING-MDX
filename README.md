@@ -1,61 +1,34 @@
-# 👑 KING MDX — WhatsApp Bot
+# KING MDX — WhatsApp Bot
 
-Bot WhatsApp Node.js basé sur Baileys, avec 200+ commandes, `.menu`, `.menu2`, stickers, outils de groupe et gestion de fichiers.
+Créateur : MR KING KAYSEUR TJE GLITCH DEV
 
-## 1. Installation locale
+## Connexion
+Ce projet utilise le **Pairing Code WhatsApp**, sans QR code. Baileys permet de demander un code de liaison lorsque la session n'est pas encore enregistrée. Le code retourné est un code de pairing de 8 caractères.
 
+Sur Render, ajoute :
+- `PHONE_NUMBER` = ton numéro WhatsApp avec indicatif pays, chiffres uniquement
+- `PREFIX` = `.`
+- `VIDEO_URL` = URL directe d'une vidéo MP4 si tu veux que `.menu` envoie une vidéo avec le menu
+
+⚠️ Pour garder la session après un redémarrage, configure un disque persistant Render monté sur le projet afin que le dossier `sessions/` ne soit pas perdu.
+
+## Démarrage local
 ```bash
 npm install
-npm start
+PHONE_NUMBER=242XXXXXXXXX npm start
 ```
 
-Un QR code apparaîtra dans le terminal. Scanne-le avec WhatsApp > Appareils connectés.
+## Render
+1. Mets les fichiers dans un dépôt GitHub.
+2. Crée un Web Service Node.
+3. Build command : `npm install`
+4. Start command : `npm start`
+5. Ajoute les variables d'environnement.
+6. Ajoute un disque persistant monté sur `/opt/render/project/src/sessions` (ou adapte le chemin selon ton service).
+7. Déploie et regarde les logs : le pairing code sera affiché.
 
-## 2. Variables
+## Commandes
+Le bot contient plus de 200 commandes. `.menu` affiche la liste complète.
 
-`OWNER_NUMBER` est optionnel.
-
-Exemple:
-```text
-OWNER_NUMBER=242XXXXXXXXX
-```
-
-## 3. Render
-
-Sur Render:
-- New → Web Service
-- connecte ton dépôt GitHub
-- Build Command: `npm install`
-- Start Command: `npm start`
-- ajoute `OWNER_NUMBER` dans Environment Variables
-
-Le service expose `/health`.
-
-## 4. Persistance
-
-Le dossier `auth_info/` contient la session WhatsApp. Render utilise par défaut un système de fichiers éphémère : pour conserver cette session après redémarrage/déploiement, utilise un stockage persistant ou une base externe adaptée.
-
-## 5. Commandes
-
-`.menu` affiche la première partie.
-`.menu2` affiche la deuxième partie.
-
-Exemples:
-```text
-.ping
-.menu
-.menu2
-.sticker
-.toimg
-.groupinfo
-.tagall
-.promote
-.demote
-.kick
-.calc 12*8
-.save
-.list
-.get fichier.apk
-```
-
-Utilise le bot de manière responsable. Évite le spam et les envois automatisés massifs.
+### Important
+La commande `.purge` est volontairement protégée/désactivée pour éviter une suppression massive de membres. Les commandes d'administration vérifient le statut d'administrateur.

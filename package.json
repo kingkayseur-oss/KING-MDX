@@ -1,8 +1,7 @@
 {
-  "name": "king-mdx-whatsapp-bot",
+  "name": "king-mdx",
   "version": "1.0.0",
-  "description": "KING MDX - WhatsApp bot with 200+ commands",
-  "type": "module",
+  "description": "KING MDX WhatsApp bot with pairing-code login",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -11,11 +10,8 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "6.7.24",
-    "@hapi/boom": "^10.0.1",
-    "express": "^5.1.0",
-    "pino": "^9.7.0",
-    "qrcode-terminal": "^0.12.0",
-    "sharp": "^0.34.3"
+    "@whiskeysockets/baileys": "latest",
+    "pino": "^9.9.0",
+    "qrcode-terminal": "^0.12.0"
   }
 }

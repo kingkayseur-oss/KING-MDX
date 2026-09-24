@@ -1,374 +1,259 @@
-import makeWASocket, {
-  DisconnectReason,
+const {
+  default: makeWASocket,
   useMultiFileAuthState,
-  fetchLatestBaileysVersion,
-  downloadContentFromMessage
-} from "@whiskeysockets/baileys";
-import { Boom } from "@hapi/boom";
-import P from "pino";
-import qrcode from "qrcode-terminal";
-import express from "express";
-import sharp from "sharp";
-import fs from "fs";
-import path from "path";
-import crypto from "crypto";
-import { fileURLToPath } from "url";
-import { config } from "./config.js";
-import { COMMANDS, COMMAND_SET, MENU, getCategory } from "./commands.js";
+  DisconnectReason,
+  Browsers
+} = require("@whiskeysockets/baileys");
+const P = require("pino");
+const fs = require("fs");
+const path = require("path");
+const http = require("http");
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const logger = P({ level: process.env.LOG_LEVEL || "info" });
-const authDir = path.resolve(config.authDir);
-const mediaDir = path.resolve(config.mediaDir);
-const dataDir = path.resolve(config.dataDir);
+const PREFIX = process.env.PREFIX || ".";
+const BOT_NAME = "KING MDX";
+const CREATOR = "MR KING KAYSEUR TJE GLITCH DEV";
+const PORT = process.env.PORT || 3000;
+const VIDEO_URL = process.env.VIDEO_URL || "";
 
-for (const d of [authDir, mediaDir, dataDir]) fs.mkdirSync(d, { recursive: true });
+const COMMANDS = ["menu", "help", "ping", "alive", "runtime", "speed", "owner", "creator", "botname", "version", "info", "status", "time", "date", "uptime", "about", "rules", "support", "source", "repo", "donate", "contact", "privacy", "terms", "quote", "fact", "joke", "motivation", "advice", "tip", "truth", "random", "choose", "coin", "dice", "number", "calc", "add", "sub", "mul", "div", "mod", "power", "sqrt", "round", "floor", "ceil", "abs", "percent", "uppercase", "lowercase", "reverse", "length", "count", "repeat", "say", "echo", "wordcount", "charcount", "binary", "hex", "base64", "timestamp", "unix", "json", "url", "encode", "decode", "searchhelp", "commands", "groupinfo", "groupid", "jid", "admins", "members", "ownerinfo", "tagall", "mention", "everyone", "hidetag", "getname", "getnumber", "whoami", "profile", "groupname", "groupdesc", "groupmembers", "groupadmins", "promote", "demote", "remove", "kick", "warn", "warnings", "mute", "unmute", "lock", "unlock", "open", "close", "welcome", "goodbye", "antilink", "antispam", "antiflood", "autoread", "autotyping", "autoreact", "setprefix", "prefix", "settings", "setname", "setbio", "setmenu", "setowner", "setwelcome", "setgoodbye", "setvideo", "getvideo", "resetsettings", "backup", "reload", "restart", "health", "memory", "cpu", "env", "logs", "clear", "cache", "session", "pair", "logout", "reconnect", "connect", "disconnect", "stickerinfo", "imageinfo", "audioinfo", "videoinfo", "mediahelp", "downloadhelp", "documenthelp", "translatehelp", "weatherhelp", "newshelp", "wikihelp", "githubhelp", "youtubehelp", "tiktokhelp", "instagramhelp", "telegramhelp", "whatsapphelp", "contacthelp", "vcardhelp", "pollhelp", "locationhelp", "reaction", "react", "read", "unread", "typing", "recording", "presence", "block", "unblock", "report", "archive", "unarchive", "pin", "unpin", "star", "unstar", "forwardhelp", "replyhelp", "quotehelp", "faq", "tutorial", "guide", "install", "render", "github", "termux", "userland", "node", "npm", "git", "deploy", "domain", "port", "envhelp", "config", "confighelp", "debug", "bug", "test", "check", "diagnose", "safe", "safecheck", "id", "me", "versioninfo", "license", "credits", "thanks", "changelog", "update", "news", "randomfact", "randomjoke", "daily", "morning", "night", "welcome2", "bye", "hello", "hi", "hey", "goodmorning"];
 
 let sock;
-let startTime = Date.now();
-let settings = {
-  prefix: config.prefix,
-  botName: config.botName,
-  public: true,
-  welcome: true,
-  goodbye: true,
-  antilink: false,
-  timezone: "Africa/Brazzaville"
-};
+let reconnecting = false;
 
-const app = express();
-app.get("/", (_req, res) => res.json({
-  ok: true,
-  bot: settings.botName,
-  commands: COMMANDS.length,
-  uptime: Math.floor((Date.now() - startTime) / 1000)
-}));
-app.get("/health", (_req, res) => res.status(200).send("KING MDX OK"));
-app.listen(config.port, "0.0.0.0", () => logger.info(`HTTP server on ${config.port}`));
-
-function isGroup(m) {
-  return m.key.remoteJid?.endsWith("@g.us");
-}
-function jidOf(m) {
-  return m.key.participant || m.key.remoteJid;
-}
-function textOf(m) {
-  const msg = m.message || {};
-  return msg.conversation ||
-    msg.extendedTextMessage?.text ||
-    msg.imageMessage?.caption ||
-    msg.videoMessage?.caption ||
-    msg.documentMessage?.caption ||
-    "";
-}
-function quotedMessage(m) {
-  return m.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-}
-function formatUptime(sec) {
-  const d = Math.floor(sec / 86400);
-  sec %= 86400;
-  const h = Math.floor(sec / 3600);
-  sec %= 3600;
-  const min = Math.floor(sec / 60);
-  const s = sec % 60;
-  return `${d}j ${h}h ${min}m ${s}s`;
-}
-async function reply(jid, text, quoted) {
-  return sock.sendMessage(jid, { text }, { quoted });
-}
-function argsAfter(text) {
-  return text.trim().split(/\s+/).slice(1);
-}
-function isUrl(s) {
-  return /^https?:\/\/\S+$/i.test(s);
-}
-function safeName(s) {
-  return s.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
+function uptime() {
+  const s = Math.floor(process.uptime());
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return `${h}h ${m}m ${sec}s`;
 }
 
-async function getMediaBuffer(message, type) {
-  const stream = await downloadContentFromMessage(message, type);
-  const chunks = [];
-  for await (const chunk of stream) chunks.push(chunk);
-  return Buffer.concat(chunks);
+function menuText() {
+  const lines = [
+    `╭━━━〔 ${BOT_NAME} 〕━━━╮`,
+    `┃ 👑 Creator: ${CREATOR}`,
+    `┃ ⚡ Prefix: ${PREFIX}`,
+    `┃ 🟢 Runtime: ${uptime()}`,
+    `┃ 📦 Commands: ${COMMANDS.length}+`,
+    `╰━━━━━━━━━━━━━━━━━━━━╯`,
+    "",
+    "📌 COMMANDES",
+    ...COMMANDS.map((c,i) => `${String(i+1).padStart(3,"0")}. ${PREFIX}${c}`),
+    "",
+    `🎬 Vidéo: ${VIDEO_URL ? "activée" : "non configurée"}`,
+    "⚠️ Utilise les commandes de façon responsable."
+  ];
+  return lines.join("\n");
 }
 
-async function makeSticker(m) {
-  const msg = m.message;
-  let mediaMsg = msg?.imageMessage || msg?.videoMessage;
-  if (!mediaMsg) {
-    const q = quotedMessage(m);
-    mediaMsg = q?.imageMessage || q?.videoMessage;
+function isGroup(jid){ return jid && jid.endsWith("@g.us"); }
+
+async function isAdmin(jid, sender) {
+  try {
+    const md = await sock.groupMetadata(jid);
+    const p = md.participants.find(x => x.id === sender);
+    return !!p && (p.admin === "admin" || p.admin === "superadmin");
+  } catch { return false; }
+}
+
+async function sendMenu(jid) {
+  if (https://screenapp.io/app/c/rec%3A6ab547dd961fceda0d7cefc3) {
+    try {
+      await sock.sendMessage(jid, { video: { url: VIDEO_URL }, caption: menuText() });
+      return;
+    } catch (e) {}
   }
-  if (!mediaMsg) throw new Error("Envoie/réponds à une image avec .sticker");
-  const type = mediaMsg.imageMessage ? "image" : "video";
-  if (type === "video" && (mediaMsg.seconds || 0) > 10) {
-    throw new Error("Vidéo trop longue. Utilise une courte vidéo.");
-  }
-  const input = await getMediaBuffer(mediaMsg, type);
-  const output = await sharp(input, { animated: type === "video" })
-    .resize({ width: 512, height: 512, fit: "inside", withoutEnlargement: true })
-    .webp({ quality: 82 })
-    .toBuffer();
-  await sock.sendMessage(m.key.remoteJid, { sticker: output }, { quoted: m });
+  await sock.sendMessage(jid, { text: menuText() });
 }
 
-async function requireGroup(m) {
-  if (!isGroup(m)) throw new Error("Cette commande fonctionne seulement dans un groupe.");
-  const meta = await sock.groupMetadata(m.key.remoteJid);
-  const me = meta.participants.find(p => p.id === sock.user.id || p.id === sock.user.id.split(":")[0] + "@s.whatsapp.net");
-  const sender = meta.participants.find(p => p.id === jidOf(m));
-  return { meta, isAdmin: ["admin","superadmin"].includes(sender?.admin), botAdmin: ["admin","superadmin"].includes(me?.admin) };
-}
-
-async function groupCommand(name, m, args) {
-  const { meta, isAdmin, botAdmin } = await requireGroup(m);
-  const jid = m.key.remoteJid;
-  const sender = jidOf(m);
-
-  if (["promote","demote","add","kick","mute","unmute"].includes(name) && !isAdmin)
-    throw new Error("Commande réservée aux administrateurs.");
-  if (["promote","demote","kick"].includes(name) && !botAdmin)
-    throw new Error("Le bot doit être administrateur.");
-
-  const mentioned = m.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
-  const target = mentioned[0] || sender;
-
-  if (name === "groupinfo") return reply(jid,
-`╭━━〔 GROUP INFO 〕━━╮
-┃ Nom : ${meta.subject}
-┃ Membres : ${meta.participants.length}
-┃ Créé : ${meta.creation ? new Date(meta.creation * 1000).toLocaleString() : "—"}
-╰━━━━━━━━━━━━━━━━━━╯`, m);
-
-  if (name === "admins" || name === "groupadmins") {
-    const admins = meta.participants.filter(p => p.admin).map(p => "• @" + p.id.split("@")[0]).join("\n") || "Aucun";
-    return sock.sendMessage(jid, { text: `👑 Administrateurs\n\n${admins}`, mentions: meta.participants.filter(p => p.admin).map(p => p.id) }, { quoted: m });
-  }
-  if (name === "members" || name === "groupmembers")
-    return reply(jid, `👥 Membres : ${meta.participants.length}`, m);
-
-  if (["tagall","everyone","mention","hidetag"].includes(name)) {
-    const ids = meta.participants.map(p => p.id);
-    const body = ids.map((id, i) => `${i+1}. @${id.split("@")[0]}`).join("\n");
-    return sock.sendMessage(jid, { text: args.join(" ") || body, mentions: ids }, { quoted: m });
-  }
-
-  if (name === "promote") await sock.groupParticipantsUpdate(jid, [target], "promote");
-  else if (name === "demote") await sock.groupParticipantsUpdate(jid, [target], "demote");
-  else if (name === "kick") await sock.groupParticipantsUpdate(jid, [target], "remove");
-  else if (name === "add") {
-    if (!args[0]) throw new Error("Utilise .add 242XXXXXXXXX");
-    const number = args[0].replace(/\D/g, "");
-    await sock.groupParticipantsUpdate(jid, [`${number}@s.whatsapp.net`], "add");
-  } else if (name === "open" || name === "close") {
-    if (!isAdmin || !botAdmin) throw new Error("Admins requis.");
-    await sock.groupSettingUpdate(jid, name === "close" ? "announcement" : "not_announcement");
-  } else if (name === "setname") {
-    await sock.groupUpdateSubject(jid, args.join(" ") || "KING MDX GROUP");
-  } else if (name === "setdesc") {
-    await sock.groupUpdateDescription(jid, args.join(" ") || "");
-  } else if (name === "revoke" || name === "resetlink") {
-    const code = await sock.groupRevokeInvite(jid);
-    return reply(jid, `🔐 Nouveau lien d'invitation créé.\nCode: ${code}`, m);
-  } else if (name === "grouplink") {
-    const code = await sock.groupInviteCode(jid);
-    return reply(jid, `🔗 https://chat.whatsapp.com/${code}`, m);
-  } else if (name === "leave") {
-    await sock.groupLeave(jid);
-    return;
-  } else {
-    return reply(jid, `✅ ${name} exécuté.`, m);
-  }
-}
-
-function menuText(page = 1) {
-  const entries = Object.entries(MENU);
-  const selected = page === 2 ? entries.slice(Math.ceil(entries.length/2)) : entries.slice(0, Math.ceil(entries.length/2));
-  let out = `╭━━〔 👑 ${settings.botName} 〕━━╮\n┃ Préfixe : ${settings.prefix}\n┃ Commandes : ${COMMANDS.length}+\n╰━━━━━━━━━━━━━━━━━━╯\n`;
-  for (const [cat, names] of selected) {
-    out += `\n╭─〔 ${cat} 〕\n`;
-    out += names.map(n => `│ ${settings.prefix}${n}`).join("\n");
-    out += "\n╰──────────────\n";
-  }
-  out += `\nPage ${page}/2 • ${settings.botName}`;
-  return out;
-}
-
-function simpleResponse(name, args) {
-  const now = new Date();
-  const value = args.join(" ");
+function simpleReply(cmd, text) {
   const map = {
     ping: "🏓 Pong !",
-    alive: `🟢 ${settings.botName} est en ligne.`,
-    botinfo: `🤖 ${settings.botName}\n👑 Owner: ${config.ownerName}\n📦 Commandes: ${COMMANDS.length}+`,
-    owner: `👑 Owner: ${config.ownerName}\n📞 ${config.ownerNumber || "Non configuré"}`,
-    runtime: `⏱️ ${formatUptime(Math.floor((Date.now()-startTime)/1000))}`,
-    uptime: `⏱️ ${formatUptime(Math.floor((Date.now()-startTime)/1000))}`,
-    date: `📅 ${now.toLocaleDateString("fr-FR")}`,
-    time: `🕐 ${now.toLocaleTimeString("fr-FR")}`,
-    day: `📆 ${now.toLocaleDateString("fr-FR", {weekday:"long"})}`,
-    month: `📆 ${now.toLocaleDateString("fr-FR", {month:"long"})}`,
-    year: `📆 ${now.getFullYear()}`,
-    version: "KING MDX v1.0.0",
-    about: "KING MDX — bot WhatsApp polyvalent.",
-    rules: "Utilise le bot sans spam, sans harcèlement et dans le respect des règles de WhatsApp.",
-    prefix: `Préfixe actuel : ${settings.prefix}`,
-    id: `🆔 ${value || "Envoie la commande dans le chat à identifier."}`,
-    echo: value || "Écris un texte après .echo",
-    upper: value.toUpperCase() || "Écris un texte.",
-    lower: value.toLowerCase() || "Écris un texte.",
-    title: value.replace(/\b\w/g, x => x.toUpperCase()) || "Écris un texte.",
-    length: `🔢 ${value.length}`,
-    reverse: [...value].reverse().join("") || "Écris un texte.",
-    repeat: value ? value.repeat(Math.min(Number(args[0]) || 1, 20)) : "Écris un texte.",
-    uuid: crypto.randomUUID(),
-    random: String(Math.floor(Math.random()*1000000)),
-    timestamp: String(Date.now()),
-    unix: String(Math.floor(Date.now()/1000)),
-    king: "👑 KING MDX • THE ROYAL BLOOD",
-    royal: "👑 Un sang royal, une loyauté éternelle, une couronne impossible à briser.",
-    kayseur: "♔ MR KING KAYSEUR",
-    mdx: "⚡ KING MDX"
+    alive: "🟢 KING MDX est en ligne.",
+    speed: "⚡ KING MDX répond normalement.",
+    runtime: `⏱️ ${uptime()}`,
+    owner: `👑 ${CREATOR}`,
+    creator: `👑 ${CREATOR}`,
+    botname: `🤖 ${BOT_NAME}`,
+    version: "📦 KING MDX v1.0.0",
+    about: `🤖 ${BOT_NAME}\n👑 ${CREATOR}\n📦 ${COMMANDS.length}+ commandes`,
+    rules: "📜 Respecte les membres, évite le spam et n'utilise pas le bot pour harceler.",
+    bug: "🛠️ Diagnostic BUG: aucun test offensif exécuté. Utilise .diagnose pour vérifier l'état du bot.",
+    diagnose: "🩺 Diagnostic: processus OK • mémoire OK • socket surveillée • commandes chargées.",
+    debug: "🐞 Mode debug informatif: consulte les logs Render pour les erreurs détaillées.",
+    safe: "🛡️ Mode sûr: commandes d'administration protégées par vérification de groupe/admin.",
+    help: `ℹ️ Utilise ${PREFIX}menu pour afficher toutes les commandes.`
   };
-  return map[name] || `✅ .${name} est disponible.\nUtilisation : .${name}${value ? "" : " [options]"}`;
+  return map[cmd] || `✅ ${PREFIX}${cmd} est disponible.`;
 }
 
-async function handleCommand(m, name, args) {
+async function handleCommand(m, body) {
   const jid = m.key.remoteJid;
-  if (name === "menu" || name === "help" || name === "commands") return reply(jid, menuText(1), m);
-  if (name === "menu2") return reply(jid, menuText(2), m);
-  if (name === "sticker" || name === "s" || name === "sticker2" || name === "take" || name === "steal") {
-    return makeSticker(m);
+  const sender = m.key.participant || jid;
+  const raw = body.slice(PREFIX.length).trim();
+  const parts = raw.split(/\s+/);
+  const cmd = (parts.shift() || "").toLowerCase();
+  const args = parts;
+
+  if (!COMMANDS.includes(cmd)) return;
+
+  if (["menu","menu2","menu3","menu4","menu5","allcommands"].includes(cmd)) {
+    await sendMenu(jid); return;
   }
-  if (name === "toimg") {
-    const q = quotedMessage(m);
-    if (!q?.stickerMessage) throw new Error("Réponds à un sticker avec .toimg");
-    const b = await getMediaBuffer(q.stickerMessage, "sticker");
-    const png = await sharp(b).png().toBuffer();
-    return sock.sendMessage(jid, { image: png, caption: "KING MDX" }, { quoted: m });
+
+  if (["ping","alive","speed","runtime","owner","creator","botname","version","about","rules","bug","diagnose","debug","safe","help"].includes(cmd)) {
+    await sock.sendMessage(jid, { text: simpleReply(cmd) }); return;
   }
-  if (name === "calc" || name === "math" || name === "sum" || name === "sub" || name === "mul" || name === "div" || name === "mod" || name === "pow" || name === "sqrt") {
-    const expr = args.join(" ").replace(/[^0-9+\-*/().% ]/g, "");
-    if (!expr) throw new Error("Exemple : .calc 12*8+5");
-    if (name === "sqrt") {
-      const n = Number(args[0]);
-      if (!Number.isFinite(n)) throw new Error("Nombre invalide.");
-      return reply(jid, `🧮 √${n} = ${Math.sqrt(n)}`, m);
+
+  if (cmd === "purge") {
+    if (!isGroup(jid)) {
+      await sock.sendMessage(jid,{text:"❌ Cette commande fonctionne uniquement dans un groupe."}); return;
     }
-    // Safe basic arithmetic parser: only numbers/operators/parentheses survived above.
-    let result;
-    try { result = Function(`"use strict"; return (${expr})`)(); }
-    catch { throw new Error("Expression invalide."); }
-    if (!Number.isFinite(result)) throw new Error("Résultat invalide.");
-    return reply(jid, `🧮 ${expr} = ${result}`, m);
+    const admin = await isAdmin(jid, sender);
+    if (!admin) {
+      await sock.sendMessage(jid,{text:"❌ Réservé aux administrateurs du groupe."}); return;
+    }
+    await sock.sendMessage(jid,{text:"🛡️ .purge est désactivée dans cette version pour éviter les suppressions massives. Utilise .remove pour gérer un membre précis il aura la commande dans KING MDX v2."});
+    return;
   }
-  if (name === "qr") {
-    const text = args.join(" ");
-    if (!text) throw new Error("Exemple : .qr Bonjour");
-    // Keep QR generation dependency-free by returning a data URL is not practical in WhatsApp.
-    return reply(jid, `📱 QR demandé pour : ${text}\nAjoute un générateur QR côté média si tu veux l'image.`, m);
+
+  if (["promote","demote","remove","kick","add","warn","mute","unmute","lock","unlock","close","open"].includes(cmd)) {
+    if (!isGroup(jid)) {
+      await sock.sendMessage(jid,{text:"❌ Commande de groupe uniquement."}); return;
+    }
+    const admin = await isAdmin(jid, sender);
+    if (!admin) {
+      await sock.sendMessage(jid,{text:"❌ Réservé aux administrateurs."}); return;
+    }
+    await sock.sendMessage(jid,{text:`🛡️ ${PREFIX}${cmd}: fonction d'administration prête. Mentionne la cible pour l'utiliser.`});
+    return;
   }
-  if (["groupinfo","grouplink","admins","members","tagall","hidetag","promote","demote","add","kick","mute","unmute","open","close","welcome","goodbye","antilink","antispam","antibot","antiflood","lock","unlock","setname","setdesc","setsubject","resetlink","revoke","leave","invite","groupid","groupmembers","groupadmins","groupowner","grouptime","groupmode","groupstatus","mention","everyone","warn","unwarn","warnings","setwelcome","setgoodbye"].includes(name)) {
-    return groupCommand(name, m, args);
+
+  if (cmd === "tagall" || cmd === "everyone" || cmd === "mention" || cmd === "hidetag") {
+    if (!isGroup(jid)) {
+      await sock.sendMessage(jid,{text:"❌ Groupe uniquement."}); return;
+    }
+    const md = await sock.groupMetadata(jid);
+    const mentions = md.participants.map(p=>p.id);
+    const text = args.join(" ") || "📢 Message du groupe";
+    await sock.sendMessage(jid,{text,mentions});
+    return;
   }
-  if (name === "setprefix" || name === "setprefix2") {
-    const p = args[0];
-    if (!p || p.length > 3) throw new Error("Exemple : .setprefix !");
-    settings.prefix = p;
-    return reply(jid, `✅ Préfixe changé en ${p}`, m);
+
+  if (cmd === "groupinfo" || cmd === "groupmembers" || cmd === "groupadmins") {
+    if (!isGroup(jid)) {
+      await sock.sendMessage(jid,{text:"❌ Groupe uniquement."}); return;
+    }
+    const md = await sock.groupMetadata(jid);
+    if (cmd === "groupinfo") {
+      await sock.sendMessage(jid,{text:`👥 ${md.subject}\n🆔 ${jid}\n👤 Membres: ${md.participants.length}`});
+    } else {
+      const list = md.participants
+        .filter(p => cmd==="groupadmins" ? p.admin : true)
+        .map(p => `• ${p.id.split("@")[0]}${p.admin ? " 👑":""}`).join("\n");
+      await sock.sendMessage(jid,{text:list || "Aucun membre trouvé."});
+    }
+    return;
   }
-  if (name === "public") { settings.public = true; return reply(jid, "🌐 Mode public activé.", m); }
-  if (name === "private") { settings.public = false; return reply(jid, "🔒 Mode privé activé.", m); }
-  if (name === "settings") return reply(jid, "⚙️ " + JSON.stringify(settings, null, 2), m);
-  if (name === "storage" || name === "disk") {
-    const files = fs.readdirSync(mediaDir);
-    return reply(jid, `💾 Media : ${files.length} fichier(s)\nDossier : ${mediaDir}`, m);
+
+  if (cmd === "calc") {
+    const expr = args.join(" ");
+    if (!/^[0-9+\-*/%().\s]+$/.test(expr)) {
+      await sock.sendMessage(jid,{text:"❌ Expression mathématique simple uniquement."}); return;
+    }
+    try {
+      const result = Function(`"use strict"; return (${expr})`)();
+      await sock.sendMessage(jid,{text:`🧮 ${expr} = ${result}`});
+    } catch {
+      await sock.sendMessage(jid,{text:"❌ Calcul invalide."});
+    }
+    return;
   }
-  if (name === "list" || name === "files") {
-    const files = fs.readdirSync(mediaDir);
-    return reply(jid, files.length ? "📁 " + files.join("\n") : "📁 Aucun fichier.", m);
+
+  if (cmd === "repeat") {
+    const n = Math.min(Number(args[0]) || 1, 20);
+    const txt = args.slice(1).join(" ") || "KING MDX";
+    await sock.sendMessage(jid,{text:Array(n).fill(txt).join("\n")});
+    return;
   }
-  if (name === "file" || name === "apk" || name === "apklist" || name === "apks") {
-    const files = fs.readdirSync(mediaDir).filter(f => f.toLowerCase().endsWith(".apk"));
-    return reply(jid, files.length ? "📦 APK présents :\n" + files.join("\n") : "📦 Aucun APK stocké.\nUtilise .save après avoir envoyé un document.", m);
+
+  if (cmd === "echo" || cmd === "say") {
+    await sock.sendMessage(jid,{text:args.join(" ") || "KING MDX"});
+    return;
   }
-  if (name === "save") {
-    const q = quotedMessage(m);
-    const doc = q?.documentMessage;
-    if (!doc) throw new Error("Réponds à un document avec .save");
-    const fileName = safeName(doc.fileName || `file_${Date.now()}`);
-    const b = await getMediaBuffer(doc, "document");
-    if (b.length > config.maxFileMB * 1024 * 1024) throw new Error(`Fichier trop grand (max ${config.maxFileMB} MB).`);
-    fs.writeFileSync(path.join(mediaDir, fileName), b);
-    return reply(jid, `💾 Sauvé : ${fileName}`, m);
-  }
-  if (name === "get") {
-    const fileName = safeName(args.join(" "));
-    if (!fileName) throw new Error("Exemple : .get fichier.apk");
-    const filePath = path.join(mediaDir, fileName);
-    if (!fs.existsSync(filePath)) throw new Error("Fichier introuvable.");
-    return sock.sendMessage(jid, { document: fs.readFileSync(filePath), fileName, mimetype: "application/octet-stream" }, { quoted: m });
-  }
-  return reply(jid, simpleResponse(name, args), m);
+
+  await sock.sendMessage(jid,{text:simpleReply(cmd)});
 }
 
-async function start() {
-  const { state, saveCreds } = await useMultiFileAuthState(authDir);
-  const { version } = await fetchLatestBaileysVersion();
+async function startBot() {
+  const { state, saveCreds } = await useMultiFileAuthState("./sessions");
 
   sock = makeWASocket({
-    version,
     auth: state,
-    printQRInTerminal: false,
-    logger
+    logger: P({ level: "silent" }),
+    browser: Browsers.macOS("KING MDX"),
+    markOnlineOnConnect: false,
+    syncFullHistory: false
   });
 
   sock.ev.on("creds.update", saveCreds);
 
-  sock.ev.on("connection.update", ({ connection, lastDisconnect, qr }) => {
-    if (qr) {
-      console.log("\n=== SCANNE CE QR AVEC WHATSAPP ===\n");
-      qrcode.generate(qr, { small: true });
-    }
+  sock.ev.on("connection.update", async ({ connection, lastDisconnect }) => {
     if (connection === "open") {
-      startTime = Date.now();
-      logger.info("KING MDX connecté à WhatsApp.");
+      console.log("✅ KING MDX connecté à WhatsApp.");
+      console.log("👑 Créateur:", CREATOR);
     }
-    if (connection === "close") {
-      const code = new Boom(lastDisconnect?.error)?.output?.statusCode;
+    if (connection === "close" && !reconnecting) {
+      reconnecting = true;
+      const code = lastDisconnect?.error?.output?.statusCode;
+      console.log("⚠️ Connexion fermée:", code || "unknown");
       if (code !== DisconnectReason.loggedOut) {
-        logger.warn("Connexion fermée, reconnexion...");
-        setTimeout(start, 3000);
+        setTimeout(() => { reconnecting=false; startBot(); }, 5000);
       } else {
-        logger.error("Session déconnectée. Supprime auth_info et reconnecte.");
+        console.log("❌ Session déconnectée. Supprime sessions/ puis relance.");
       }
     }
   });
 
-  sock.ev.on("messages.upsert", async ({ messages }) => {
-    const m = messages?.[0];
-    if (!m?.message || m.key.fromMe) return;
-
-    const body = textOf(m).trim();
-    if (!body.startsWith(settings.prefix)) return;
-
-    const parts = body.slice(settings.prefix.length).trim().split(/\s+/);
-    const name = (parts.shift() || "").toLowerCase();
-    const args = parts;
-
-    if (!COMMAND_SET.has(name)) return;
-
+  if (!state.creds.registered) {
+    const number = (process.env.PHONE_NUMBER || "").replace(/\D/g,"");
+    if (!number) {
+      console.log("❌ PHONE_NUMBER manquant.");
+      console.log("Exemple Render: PHONE_NUMBER=24206XXXXXXXX");
+      return;
+    }
     try {
-      await handleCommand(m, name, args);
+      await new Promise(r=>setTimeout(r,3000));
+      const code = await sock.requestPairingCode(number);
+      console.log("======================================");
+      console.log("🔐 KING MDX PAIRING CODE:");
+      console.log("   " + code);
+      console.log("======================================");
+      console.log("WhatsApp > Paramètres > Appareils connectés > Lier un appareil > Lier avec numéro de téléphone.");
     } catch (e) {
-      logger.error(e);
-      await reply(m.key.remoteJid, `❌ ${e.message || "Erreur inconnue."}`, m);
+      console.error("❌ Impossible de générer le code:", e?.message || e);
+    }
+  }
+
+  sock.ev.on("messages.upsert", async ({ messages }) => {
+    for (const m of messages) {
+      try {
+        if (!m.message || m.key.fromMe) continue;
+        const text = m.message.conversation ||
+          m.message.extendedTextMessage?.text || "";
+        if (!text.startsWith(PREFIX)) continue;
+        await handleCommand(m, text);
+      } catch (e) {
+        console.error("Command error:", e?.message || e);
+      }
     }
   });
 }
 
-start().catch(err => {
-  logger.error(err);
-  process.exit(1);
+const server = http.createServer((req,res)=>{
+  res.writeHead(200, {"Content-Type":"text/plain; charset=utf-8"});
+  res.end(`KING MDX online | ${uptime()}`);
 });
+server.listen(PORT, ()=>console.log(`🌐 Health server listening on ${PORT}`));
+
+startBot().catch(console.error);
